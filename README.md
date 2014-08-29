@@ -6,7 +6,7 @@ IDL libraries for processing low frequency CRRL spectra
 To process spectra, simply run process_spectra.pro
 
 NB:
-1) This code makes use of the coyote IDL libraries (http://idlcoyote.com/documents/programs.php)<\br>
+1) This code makes use of the coyote IDL libraries (http://idlcoyote.com/documents/programs.php)
 2) A hard-coded path to an LLINE directory (included in this download) is required
 3) start from a new directory that has all of the *.restored.corr images
 4) there are two options for making the fits image: with smoothing, or without smoothing
