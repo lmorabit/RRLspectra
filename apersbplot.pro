@@ -36,7 +36,7 @@ pro apersbplot
 		;;--SET UP OUTPUT FILES
 		outdir = 'sbplot/'
 		tmp = strsplit(aperfiles[ii],'/',/extract)
-		plotfile = outdir + strmid(tmp[1],0,3) + '.eps'
+		plotfile = outdir + strmid(tmp[1],0,3) + '.ps'
 		logfile = outdir + tmp[1]
 		!p.thick=3.0
 		!x.thick=3.0
@@ -57,7 +57,7 @@ pro apersbplot
 		printf,lun,'sbid contlev rmsresid dynrange',format='(A)'
 
 		;; start the plot file
-		ps_start,filename=plotfile,/landscape,/color,/encap
+		cgps_open,filename=plotfile,/landscape,/color
 		cgloadct,39
 
 		nsb = 0
@@ -102,7 +102,7 @@ pro apersbplot
 		close,lun
 		free_lun,lun
 
-		ps_end
+		cgps_close
 
 	endfor ;; index ii, loop over apertures
 

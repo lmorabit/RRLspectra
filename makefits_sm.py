@@ -27,10 +27,10 @@ for image in casaimages:
         bmin = imagebeam['minor']['value']
         bpa  = imagebeam['positionangle']['value']
 
-        to_bmaj = '400.0arcsec'
-        to_bmin = '400.0arcsec'
+        to_bmaj = '42.0arcsec'
+        to_bmin = '42.0arcsec'
         to_bpa  = '0deg'
-        print, 'to beam: ', to_bmaj, to_bmin, to_bpa
+        print 'to beam: ', to_bmaj, to_bmin, to_bpa
 
         # source --> three quantities that describe the source maj axis, min axis, position angle
         # beam --> three quantities that describe the beam maj axis, min axis, position angle
@@ -54,5 +54,5 @@ for image in casaimages:
 
         ia.close()
 
-os.system('mv L*restored.corr channel_images/restoredcorr/')
+os.system('mv *restored.corr channel_images/restoredcorr/')
 

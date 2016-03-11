@@ -20,5 +20,5 @@ for image in casaimages:
     print 'saving fits file '+image+'.fits'
     exportfits(imagename = image, stokeslast=False, fitsimage = 'channel_images/'+image+'.fits', overwrite=True )
 
-os.system('mv L*restored.corr channel_images/restoredcorr/')
+os.system('mv *restored.corr channel_images/restoredcorr/')
 

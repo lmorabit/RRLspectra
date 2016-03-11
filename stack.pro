@@ -78,7 +78,6 @@ pro stack, sigma, redshift
                 print, 'Subband ',string(sbid[badsb[i]]),' was removed due to rms noise.'	
 	endfor
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                  list of rrls                ;;
 
@@ -132,7 +131,7 @@ pro stack, sigma, redshift
 
 	nsubbands = n_elements(sblist)
 
-        clipchans = 6
+        clipchans = 5
         clipedge = clipchans - 3
 
 
@@ -140,7 +139,7 @@ pro stack, sigma, redshift
 ;;	    BEGIN LOOP OVER SUBBANDS		;;
 
 
-	ps_start,filename=plotfile,/landscape,/color
+	cgps_open,filename=plotfile,/landscape,/color
 	cgloadct,39
 
 	stack_vel = 0d0
@@ -411,7 +410,7 @@ pro stack, sigma, redshift
 	oplot,velx[goodresid],resid[goodresid],color=250,thick=5
 
 	;; end plotting!
-	ps_end
+	cgps_close
 
 	;; write spectra to file
 	openw,lun2,specfile,/get_lun

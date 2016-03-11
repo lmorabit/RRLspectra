@@ -3,8 +3,8 @@ pro process_spectra
 ;; start from new directory with only restored.corr images in it
 
 	;; create fits files -- COMMENT ONE OF THESE OUT!
-	spawn, 'casapy --nologger -c makefits.py' ;; no smoothing
-	;spawn, 'casapy --nologger -c makefits_sm.py' ;; with smoothing
+	spawn, 'casapy --nologger -c /home/morabito/scripts/RRLspectra/makefits.py' ;; no smoothing
+	;spawn, 'casapy --nologger -c /home/morabito/scripts/RRLspectra/makefits_sm.py' ;; with smoothing
 
 	;; clean up after casa
 	if file_test('casapy*log') then file_delete, 'casapy*log'
@@ -12,7 +12,7 @@ pro process_spectra
 	if file_test('exportfits.last') then file_delete, 'exportfits.last'
 
 	;; check if files are sorted and sort them if not
-	if file_test('channel_images/SB*') ne 1 then begin
+	if file_test('channel_images/SB*',/directory) ne 1 then begin
 		;; first get a list of the files
 		allimages = file_search('channel_images/*fits')
 		sbs = []
@@ -24,7 +24,7 @@ pro process_spectra
 		for ii=0,n_elements(sblist)-1 do begin
 			sbdir = 'channel_images/'+sblist[ii]
 			file_mkdir, sbdir
-			file_move, 'channel_images/L*'+sblist[ii]+'*fits', sbdir, /require_directory
+			file_move, 'channel_images/*'+sblist[ii]+'*fits', sbdir, /require_directory
 		endfor
 	endif
 
@@ -50,10 +50,10 @@ pro process_spectra
 	for ii=0,n_elements(pltsb)-1 do pltsb[ii] = fix(strmid(subband[ii],2))
 
 
-	ps_start,filename='aperextraction_fitparms.eps',/encap
+	cgps_open,filename='aperextraction_fitparms.ps'
         cgloadct,0
         !p.multi=[0,3,3]
-        plot,pltsb,constant,title='constant term',xtitle='subband'
+        plot,pltsb,constant,title='constant term',xtitle='subband',color=0
         plot,pltsb,height,title='scale factor',xtitle='subband'
         plot,pltsb,widthx,title='width x',xtitle='subband'
         plot,pltsb,widthy,title='width y',xtitle='subband'
@@ -62,7 +62,7 @@ pro process_spectra
         ;; convert the radians to degrees
         thetadeg = theta * 360d0 / (2d0*!dpi)
         plot,pltsb,thetadeg,title='theta (deg)',xtitle='subband'
-        ps_end
+        cgps_close
 
 
 	if file_test('sbplot',/directory) ne 1 then file_mkdir, 'sbplot'
@@ -72,6 +72,12 @@ pro process_spectra
 	print, 'SUBBAND PLOTS COMPLETE.'
 	print, '============================='
 	print, ' '
+	print, 'PLOTTING CURVE-OF-GROWTH ...'
+	curveofgrowth
+	print, 'CURVE-OF-GROWTH COMPLETE.'
+	print, '============================='
+	print, ' '
+
 
 	print, '============================='
 	print, '    SUMMARY OF PROCESSING'
@@ -81,7 +87,9 @@ pro process_spectra
 	print, 'SB inspection plots saved to sbplot/'
 	readcol,'imstddev.dat',sb,imstdev,format='A,D'
 	failed = where(imstdev gt median(imstdev)*5)
-	print, 'There were ',strtrim(fix(n_elements(failed)),2),' subbands that failed.'
+	if total(failed) ge 0 then begin
+		print, 'There were ',strtrim(fix(n_elements(failed)),2),' subbands that failed.'
+	endif
 	print, ' '
         print, 'Smallest beam size: '
         print, '-------------------'

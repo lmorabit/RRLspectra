@@ -12,9 +12,9 @@ pro aperextraction
 ;
 ; NOTES:
 ;       (1) Writes the following files:
-;           - an .eps file with images of each channel and Gaussian regions
+;           - an .ps file with images of each channel and Gaussian regions
 ;           - a .dat file that contains a list of the extracted spectra
-;	    - an .eps file with gaussian fit parameters for all subbands
+;	    - an .ps file with gaussian fit parameters for all subbands
 ;	    - a .dat file that contains a log of the gaussian fit parameters
 ;
 ;       (2) Only writes spectra for good subbbands to .dat file. 
@@ -23,12 +23,9 @@ pro aperextraction
 ;   MODIFICATION HISTORY:
 ;      Written in IDL by Leah K. Morabito October 2013
 ;      Revised 8 November 2013 (mostly comments)
-;      Last revised 12 March 2014 (adapt for general pipeline use)
+;      Revised 12 March 2014 (adapt for general pipeline use)
+;      Last revised 14 January 2015 (minor cleanup of typos, etc.)
 ;-
-
-        ;;-- M82 coordinates (NED)
-        m82ra = 148.969687d0
-        m82dec = 69.679383d0
 
 	;;-- GET A LIST OF SUBBANDS
 	sblist = file_search('channel_images/SB*')
@@ -47,7 +44,9 @@ pro aperextraction
 
 	if file_test('aperextraction',/directory) ne 1 then file_mkdir, 'aperextraction'
 
-	sigmas = (dindgen(51)+10d0)/10d0
+	;;sigmas = (dindgen(51)+10d0)/10d0
+	;;sigmas = (dindgen(71)+10d0)/10d0
+	sigmas = (dindgen(21)+10d0)/10d0
 	for kk=0,n_elements(sigmas)-1 do begin
 		sigfile = 'aperextraction/'+cgnumber_formatter(sigmas[kk],decimal=1)+'.dat'
 		openw,lun2,sigfile,/get_lun
@@ -129,8 +128,8 @@ pro aperextraction
 			sbmasks[ii,xmin:xmax,ymin:ymax] = tmp
 		endfor ;; index jj, loop over sigmas
 
-		plotfile = 'aperextraction/'+subband+'.eps'
-		ps_start,filename=plotfile,/encap,/color
+		plotfile = 'aperextraction/'+subband+'.ps'
+		cgps_open,filename=plotfile,/color
 	        !P.charsize=1.5
 		loadct,5
 		
@@ -194,7 +193,7 @@ pro aperextraction
 
 		endfor ;; index ii, loop over channels
 		endif
-		ps_end
+		cgps_close
 
 		printf,lun1,subband,' ',a[0],' ',a[1],' ',a[2],' ',a[3],' ',a[4],' ',a[5],' ',a[6],format='(A,A,D,A,D,A,D,A,D,A,D,A,D,A,D)'
 
