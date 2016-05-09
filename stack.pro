@@ -1,4 +1,4 @@
-pro stack, sigma, redshift
+pro stack, sigma, redshift, extension=extension, channel_clip=channel_clip, linewidth_clip=linewidth_clip, order=order, nobpfit=nobpfit, bpinteractive=bpinteractive
 ;+
 ; NAME:
 ;     STACK
@@ -9,6 +9,21 @@ pro stack, sigma, redshift
 ;	sbplot.pro, fits the bandpass of each SB (with an option
 ;	to use previous fits), converts to velocity space, and 
 ;	plots final stack.
+;
+; INPUTS:
+;     SIGMA
+;     REDSHIFT
+;     EXTENSION : extension of the channelmap filenames (if not set, will use 'fits')
+;
+; OPTIONAL INPUT KEYWORDS:
+;     CHANNEL_CLIP: if present, the number corresponds to the times RMS for clipping bad channels.
+;     NOBPFIT: boolean for fitting bandpass. If true, no fitting will be performed and previous fit will be used.
+;     BPINTERACTIVE: boolean for interactive bandpass fitting.
+;     ORDER: order of bandpass fitting polynomial(s) when no interactive bandpass fitting; order applies to all subbands.
+;     LINEWIDTH_CLIP: if present, larger linewidths [km/s] will be clipped.
+;
+; EXAMPLE:
+;      stack_all, 1.0, 0.00073, channel_clip=5, order=3, linewidth_clip=40
 ;
 ; NOTES:
 ;       (1) Writes the following files:
@@ -22,22 +37,52 @@ pro stack, sigma, redshift
 ;   MODIFICATION HISTORY:
 ;      Written in IDL by Leah K. Morabito October 2013
 ;      Revised 11 November 2013 to inspect the rms
-;      Last revised 12 March 2014 (adapt for general pipeline use)
+;      Revised 12 March 2014 (adapt for general pipeline use)
+;      2014-08-29 Modified paths to 'LLINE/' 
+;       moved lines 178-179 inside the loop
+;       178                 tmp = calpha_freq[alphafreqind]
+;	179                 alphafreq = tmp[0]
+;      2014-11-04 Modified by M. C. Toribio
+;       -clipping based on linewidth made optional
+;       -interactive prompt for polynomial fitting made optional
+;       -use of robust_poly_fit instead of poly_fit in the bandpass fitting
+;       -clipping of bad channels implemented
+;       -clipedge values lowered to 1.
+;      2015-10-21 Modified by M.C. Toribio
+;       -renamed stack_all:
+;       -includes SB that have no lines, frequencies w.r.t. the velocity of nearest line
+;       -uses the LLINE files with double precision (*_d*)
+;      2016-05-09 Modified by L.K. Morabito
+;	- minor modifications before pushing to github
 ;-
-
+     
+  
 	sigmastr = cgnumber_formatter(sigma,decimal=1)
+
+	bool_badchan=0
+	if keyword_set(channel_clip) then bool_badchan=1
+
+	bool_wideline=0
+	if keyword_set(linewidth_clip) then bool_wideline=1
+
+	if not keyword_set(nobpfit) then nobpfit=0
+	if not keyword_set(bpinteractive) then bpinteractive=0 else order=0
+
+	if not keyword_set(extension) then extension='fits'
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                   CONSTANTS                  ;;
 
         speedoflight = 2.99792458d5 ;; km/s
 	sysvel = redshift * speedoflight ;; km/s
+	print, 'sysvel:', sysvel
+	print, ''
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;          BARYCENTRIC CORRECTION              ;;
 
 	;; get date and time (UTC) of observation
-	cubelist = file_search('channel_images/SB*/*fits')
+	cubelist = file_search('channel_images/SB*/*'+extension)
 	testcube = mrdfits(cubelist[0],0,h)
 	utctime = sxpar( h, 'DATE-OBS')  
 	radeg = sxpar(h, 'OBSRA')
@@ -72,22 +117,25 @@ pro stack, sigma, redshift
 	badsb = where(rmsresid gt 10*rmsmed or dynrange gt 10*dynmed, complement=goodsb)
 
 	;; get rid of them from sblist
-	for i=0,n_elements(badsb)-1 do begin
+	if badsb[0] ne -1 then begin
+	     for i=0,n_elements(badsb)-1 do begin
 		tmpind = where(sblist eq sbid[badsb[i]],complement=goodtmpind)
 		sblist = sblist[goodtmpind]
-                print, 'Subband ',string(sbid[badsb[i]]),' was removed due to rms noise.'	
-	endfor
+                print, 'Subband ',string(sbid[badsb[i]]),' was removed due to rms noise by:', rmsresid[badsb[i]]/rmsmed, dynrange[badsb[i]]/dynmed	
+	     endfor
+	endif
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;                  list of rrls                ;;
 
 	;; frequencies in MHz
         ;; ALPHA TRANSITIONS
-        readcol, '/net/leubeek/data2/LLINE/RRL_CI_alpha.txt', ca1, ca2, cann, calpha_freq, format='A,A,D,D', skipline=1, /silent
+        readcol, 'LLINE/RRL_CI_alpha_d.txt', ca1, ca2, cann, calpha_freq, format='A,A,D,D', skipline=1, /silent
         ;; BETA TRANSITIONS
-        readcol, '/net/leubeek/data2/LLINE/RRL_CI_beta.txt', cb1, cb2, cbnn, cbeta_freq, format='A,A,D,D', skipline=1, /silent
+        readcol, 'LLINE/RRL_CI_beta_d.txt', cb1, cb2, cbnn, cbeta_freq, format='A,A,D,D', skipline=1, /silent
         ;; GAMMA TRANSITIONS
-        readcol, '/net/leubeek/data2/LLINE/RRL_CI_gamma.txt', cg1, cg2, cgnn, cgamma_freq, format='A,A,D,D', skipline=1, /silent
+        readcol, 'LLINE/RRL_CI_gamma_d.txt', cg1, cg2, cgnn, cgamma_freq, format='A,A,D,D', skipline=1, /silent
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -102,10 +150,9 @@ pro stack, sigma, redshift
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;         FIT BANDPASS INTERACTIVELY?          ;;
-;;           (must be done 1st time)		;;
 
-        bpyesno=''
-        read,bpyesno,prompt='y = fit the bandpass, n = use previous fits: '
+        if nobpfit then bpyesno='n' else bpyesno='y'
+
         if bpyesno eq 'n' then begin
                 readcol,logfile,fitsb,contlev,rmsresid,dynrange,polyord,format='A,D,D,D,D'
         endif else begin
@@ -134,12 +181,11 @@ pro stack, sigma, redshift
         clipchans = 5
         clipedge = clipchans - 3
 
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;	    BEGIN LOOP OVER SUBBANDS		;;
 
 
-	cgps_open,filename=plotfile,/landscape,/color
+	cgPS_Open, plotfile, /landscape,/color
 	cgloadct,39
 
 	stack_vel = 0d0
@@ -153,6 +199,7 @@ pro stack, sigma, redshift
 	for i=0,n_elements(sblist)-1 do begin
 
 		subband = sblist[i]
+                print, subband
 
 		sbindex = where(sb eq subband)
 
@@ -161,57 +208,95 @@ pro stack, sigma, redshift
 
 		;; clip the edges
 	;; 	this would be the corrrect way to clip
-	;;	freq_sb_clip = freq_sb[clipedge:n_elements(freq_sb)-1-clipedge]
-	;;	spec_sb_clip = spec_sb[clipedge:n_elements(spec_sb)-1-clipedge]
+		freq_sb_clip = freq_sb[clipedge:n_elements(freq_sb)-1-clipedge]
+		spec_sb_clip = spec_sb[clipedge:n_elements(spec_sb)-1-clipedge]
 
 		
 	;; 	but there is a missing channel (channel 32)
-		freq_sb_clip = freq_sb[clipedge:n_elements(freq_sb)-clipedge]
-		spec_sb_clip = spec_sb[clipedge:n_elements(spec_sb)-clipedge]
+	;;	freq_sb_clip = freq_sb[clipedge:n_elements(freq_sb)-clipedge]
+	;;	spec_sb_clip = spec_sb[clipedge:n_elements(spec_sb)-clipedge]
 
-		;; test whether there's a line in the subband
-		rest_freqs = freq_sb[clipchans:n_elements(freq_sb) - 1 - clipchans] * (1d0 + redshift)
-	;;	rest_freqs = freq_sb[clipchans:n_elements(freq_sb) - clipchans] * (1d0 + redshift)
-		alphafreqind = where(calpha_freq gt min(rest_freqs) and calpha_freq lt max(rest_freqs))
-		tmp = calpha_freq[alphafreqind]
-		alphafreq = tmp[0]
-	
+                ;; test whether there's a line in the subband
+                rest_freqs = freq_sb[clipchans:n_elements(freq_sb) - 1 - clipchans] * (1d0 + redshift)
+        ;;      rest_freqs = freq_sb[clipchans:n_elements(freq_sb) - clipchans] * (1d0 + redshift)
+                alphafreqind = where(calpha_freq gt min(rest_freqs) and calpha_freq lt max(rest_freqs))
+;               tmp = calpha_freq[alphafreqind]
+;               alphafreq = tmp[0]
+                  
+                print, alphafreqind
+		;; If there is no line in the SB, we will adopt the freq of the nearest one: 
+	        if total(alphafreqind) eq -1 then begin                
+     	        	avg_sb_freq=mean(rest_freqs, /double, /NaN)
+                	diff_freq=abs(calpha_freq-avg_sb_freq)
+	        	maxdiff_freq=max(diff_freq, maxj, min=mindiff_freq, subscript_min=minj)
+			alphafreqind=minj
+                	print, 'line outside SB'
+	        endif
 		;; start the loop if there's a line
 		if total(alphafreqind) gt 0 then begin
+
+			tmp = calpha_freq[alphafreqind]
+			alphafreq = tmp[0]
 			
 			;; shift frequency to velocity
-			velocity = ((alphafreq - freq_sb_clip) / freq_sb_clip * speedoflight) - sysvel + vshift
+			tmp_velocity = ((alphafreq - freq_sb_clip) / freq_sb_clip * speedoflight) - sysvel + vshift
 
+			;; BLANK LINES ACCORDING TO LINEWIDTH
 			;; blank line before fitting
-			blankindex = where(velocity gt -100d0 and velocity lt 100d0) ;; assume line ~100 kms/s
 			spec_blank = spec_sb_clip
-			spec_blank[blankindex] = !values.f_nan
-			spec_mean = mean(spec_blank[where(finite(spec_blank) ne 0)])
-			spec_median = median(spec_blank[where(finite(spec_blank) ne 0)])
-			spec_blank[blankindex] = spec_median
-			
+			if (bool_wideline) then begin 
+				blankindex = where(abs(tmp_velocity) lt linewidth_clip) 
+				if blankindex[0] ne -1 then begin
+			 		spec_blank[blankindex] = !values.f_nan
+			  		spec_median = median(spec_blank[where(finite(spec_blank) ne 0)])
+			  		spec_blank[blankindex] = spec_median
+				endif
+			endif
 			;; FIT THE BANDPASS
 			if bpyesno eq 'y' then begin
 
-				;; plot for user to see
-	                        set_plot,'x'
-				!p.multi=0
-	       	                plot, velocity, spec_blank, yrange=[min(spec_blank)-0.1d0*min(spec_blank), max(spec_blank)+0.1d0*max(spec_blank)], /ys
-	              		tryfit: read,prompt='Please enter the order of the polynomial you want to try: ',order1
-	                        ord = double(order1)
-	               	        coeff = poly_fit(velocity, spec_blank, ord, /double)
-	               	        ;coeff = robust_poly_fit(velocity, spec_blank, ord, /double)
-                        	bp_poly = coeff[0]
-	                        for k=1,n_elements(coeff)-1 do bp_poly = bp_poly + (coeff[k] * velocity^double(k) )
-	
-				;; overplot the fit for user to see
-	       	                oplot, velocity, bp_poly, linestyle=2
-                	        yesno = ''
-	                       	read,prompt='Do you want to refit? (y/n): ', yesno
-	                        if yesno eq 'y' then goto, tryfit
+				ord=double(order)
+				if bpinteractive then begin
+					;; plot for user to see
+	                        	set_plot,'x'
+					!p.multi=0
+	       	                	plot, tmp_velocity, spec_blank, yrange=[min(spec_blank)-0.1d0*min(spec_blank), max(spec_blank)+0.1d0*max(spec_blank)], /ys
+	              			tryfit: read,prompt='Please enter the order of the polynomial you want to try: ',order1
+		                        ord = double(order1)
+				endif
+		               	;coeff = poly_fit(velocity, spec_blank, ord, /double)
+	     	          	coeff = robust_poly_fit(tmp_velocity, spec_blank, ord)
+                	       	bp_poly = coeff[0]
+	                	for k=1,n_elements(coeff)-1 do bp_poly = bp_poly + (coeff[k] * tmp_velocity^double(k) )
+
+				if bpinteractive then begin
+					;; overplot the fit for user to see
+		       	                oplot, tmp_velocity, bp_poly, linestyle=2
+                		        yesno = ''
+	                	       	read,prompt='Do you want to refit? (y/n): ', yesno
+	                	        if yesno eq 'y' then goto, tryfit
+				endif
+
 
 				;; once fitting is finished
-				spec_bp = (spec_sb_clip / bp_poly) - 1d0
+				tmp_spec_bp = (spec_sb_clip / bp_poly) - 1d0
+
+				;----------------------------------------------------
+				;BAD CHANNEL CLIPPING:
+				velocity=tmp_velocity
+				spec_bp=tmp_spec_bp
+				if (bool_badchan) then begin
+					;calculate rms and clip bad channels:
+					rms_channels = ROBUST_SIGMA(tmp_spec_bp, /ZERO )
+					rms_threshold= channel_clip * rms_channels
+					rms_id_good=where(abs(tmp_spec_bp) lt rms_threshold)
+					if rms_id_good[0] ne -1 then begin
+						spec_bp=tmp_spec_bp[rms_id_good]
+						velocity=tmp_velocity[rms_id_good]
+					endif
+				endif
+				;----------------------------------------------------
+
 
 	                        ;; print statistics to logfile
 	                        cont_level = median(spec_bp)
@@ -228,12 +313,30 @@ pro stack, sigma, redshift
 			endif else begin
 				
 				;; if using previous fits
+				print, 'using previous fits'
 				ord = polyord[where(sbid eq subband)]
 				ord1 = ord[0]
 				coeff = robust_poly_fit(velocity, spec_blank, ord1)
                                 bp_poly = coeff[0]
                                 for k=1,n_elements(coeff)-1 do bp_poly = bp_poly + (coeff[k] * velocity^double(k) )
-	                        spec_bp = (spec_sb_clip / bp_poly) - 1d0
+	                        tmp_spec_bp = (spec_sb_clip / bp_poly) - 1d0
+
+
+				;----------------------------------------------------
+				;BAD CHANNEL CLIPPING:
+				velocity=tmp_velocity
+				spec_bp=tmp_spec_bp
+				if (bool_badchan) then begin
+					;calculate rms and clip bad channels:
+					rms_channels = ROBUST_SIGMA(tmp_spec_bp, /ZERO )
+					rms_threshold= channel_clip * rms_channels
+					rms_id_good=where(abs(tmp_spec_bp) lt rms_threshold)
+					if rms_id_good[0] ne -1 then begin
+						spec_bp=tmp_spec_bp[rms_id_good]
+						velocity=tmp_velocity[rms_id_good]
+					endif
+				endif
+				;----------------------------------------------------
 	
 				rms_resid = stddev(spec_bp)
 				wgt = 1d0/rms_resid
@@ -246,19 +349,23 @@ pro stack, sigma, redshift
                         set_plot,'ps'
                         !p.multi=[0,1,2]
 			vt = 'Velocity [km/s]'
-			nt = 'Normalized flux'
 
+			;; before BP correction
+			nt = 'Normalized flux'			
 			yrange = [min(spec_sb_clip)-0.01*min(spec_sb_clip),max(spec_sb_clip)+0.01*max(spec_sb_clip)]
 			pretitle = 'Subband '+string(subband)
-			plot,velocity,spec_blank,title=pretitle,yrange=yrange,xtitle=vt,ytitle=nt,charsize=1
-	;		plot,velocity,spec_sb_clip,title=pretitle,yrange=yrange,xtitle=vt,ytitle=nt,charsize=1
-			oplot,velocity,bp_poly,linestyle=2,color=250
-                        yrange = [min(spec_bp)-0.01,max(spec_bp)+0.01]
+			plot,tmp_velocity,spec_blank,title=pretitle,yrange=yrange,xtitle=vt,ytitle=nt,charsize=1
+			oplot,tmp_velocity,bp_poly,linestyle=2,color=250
+
+			;; after BP correction
+                        yrange = [min(tmp_spec_bp)-0.01,max(tmp_spec_bp)+0.01]
                         posttitle = 'Corrected for bandpass'
 			plotcontinuum = bp_poly / bp_poly - 1d0
 			result = linfit(velocity, spec_bp, yfit=yfit)
-			plot,velocity,spec_bp,title=posttitle,yrange=yrange,linestyle=0,xtitle=vt,ytitle=nt,charsize=0.95
-			oplot,velocity,yfit,linestyle=2,color=250
+			plot,velocity,spec_bp,title=posttitle,yrange=[-0.01,0.01],linestyle=0,xtitle=vt,ytitle=nt,charsize=0.95
+			oplot, tmp_velocity,tmp_spec_bp, color=250 ; clipped channels in red
+			oplot, velocity, spec_bp
+			oplot, velocity,yfit,linestyle=2,color=250
 
 			stack_vel = [stack_vel, !values.f_nan, velocity]
 			stack_spec = [stack_spec, !values.f_nan, spec_bp]
@@ -269,7 +376,6 @@ pro stack, sigma, redshift
                         alphafreqs = [alphafreqs, !values.f_nan, replicate(alphafreq,n_elements(velocity))]
                         nsb = nsb + 1
 			sbnum = strmid(subband,2,4)
-			print, sbnum
                         sbnames = [sbnames, !values.f_nan, replicate(fix(sbnum),n_elements(velocity))]
 
 						
@@ -319,6 +425,7 @@ pro stack, sigma, redshift
 	sortedsb = stack_sb[sort(stack_vel)]
 
 	;; calculate coverage
+        print, n_elements(sortedvel)
 	indmin = n_elements(sortedvel)/2 - 50
 	indmax = n_elements(sortedvel)/2 + 50
 	fitvel = sortedvel[indmin:indmax]
@@ -332,7 +439,8 @@ pro stack, sigma, redshift
 	velrange = sortedvel[min(goodresid):max(goodresid)]
 	print, 'Use velocity range: ',min(velrange),' to ',max(velrange)
 	xr = [-400,400]
-	yr = [-0.006, 0.004]
+	yr=[-0.004,0.004]
+	!y.style=0
 
 	;; Plotting
         contline = dblarr(n_elements(sortedvel))
@@ -346,6 +454,8 @@ pro stack, sigma, redshift
 	;; Plot of specturm with good velocity coverage
 	plot, sortedvel,sortedspeccov,linestyle=0,title='Stacked spectrum: Original Resolution, Good velocity coverage', xtitle=vt, xrange=xr
         oplot, sortedvel, contline, linestyle=2, color=250
+
+	!y.style=1
 	;; Smooth with boxcar and plot
 	smoothed = smooth(sortedspec,35,/edge_truncate)
 	smoothed[zerocov] = 0d0
@@ -410,7 +520,7 @@ pro stack, sigma, redshift
 	oplot,velx[goodresid],resid[goodresid],color=250,thick=5
 
 	;; end plotting!
-	cgps_close
+        cgPS_Close
 
 	;; write spectra to file
 	openw,lun2,specfile,/get_lun
@@ -434,7 +544,7 @@ pro stack, sigma, redshift
 	print,'For an SNR of: ',cgnumber_formatter(abs(linepeak/finalnoise),decimal=3)
 
 	set_plot,'x'
-stop
+
 
 print, 'done.'
 end
