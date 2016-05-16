@@ -260,7 +260,8 @@ pro stack, sigma, redshift, extension=extension, channel_clip=channel_clip, line
 					;; plot for user to see
 	                        	set_plot,'x'
 					!p.multi=0
-	       	                	plot, tmp_velocity, spec_blank, yrange=[min(spec_blank)-0.1d0*min(spec_blank), max(spec_blank)+0.1d0*max(spec_blank)], /ys
+	       	                	;;plot, tmp_velocity, spec_blank, yrange=[min(spec_blank)-0.1d0*min(spec_blank), max(spec_blank)+0.1d0*max(spec_blank)], /ys
+	       	                	plot, tmp_velocity, spec_blank, yrange=[min(spec_blank)-0.05d0*median(spec_blank), max(spec_blank)+0.05d0*median(spec_blank)], /ys
 	              			tryfit: read,prompt='Please enter the order of the polynomial you want to try: ',order1
 		                        ord = double(order1)
 				endif
@@ -284,15 +285,16 @@ pro stack, sigma, redshift, extension=extension, channel_clip=channel_clip, line
 				;----------------------------------------------------
 				;BAD CHANNEL CLIPPING:
 				velocity=tmp_velocity
-				spec_bp=tmp_spec_bp
+				spec_bp = tmp_spec_bp
 				if (bool_badchan) then begin
 					;calculate rms and clip bad channels:
 					rms_channels = ROBUST_SIGMA(tmp_spec_bp, /ZERO )
 					rms_threshold= channel_clip * rms_channels
 					rms_id_good=where(abs(tmp_spec_bp) lt rms_threshold)
 					if rms_id_good[0] ne -1 then begin
-						spec_bp=tmp_spec_bp[rms_id_good]
-						velocity=tmp_velocity[rms_id_good]
+						spec_bp = tmp_spec_bp[rms_id_good]
+						velocity = tmp_velocity[rms_id_good]
+						freq_sb_clip = freq_sb_clip[rms_id_good]
 					endif
 				endif
 				;----------------------------------------------------
@@ -334,6 +336,7 @@ pro stack, sigma, redshift, extension=extension, channel_clip=channel_clip, line
 					if rms_id_good[0] ne -1 then begin
 						spec_bp=tmp_spec_bp[rms_id_good]
 						velocity=tmp_velocity[rms_id_good]
+						freq_sb_clip = freq_sb_clip[ rms_id_good ]
 					endif
 				endif
 				;----------------------------------------------------
